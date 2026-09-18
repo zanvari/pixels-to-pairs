@@ -3,7 +3,12 @@
 import os
 from pathlib import Path
 from typing import Iterable, List, Set
-
+from pixels_to_pairs.evaluation.metrics import compute_doc_metrics
+from pixels_to_pairs.inference.generation import (
+    prompt_token_stats,
+    run_model_on_prompts,
+)
+from pixels_to_pairs.parsing import parse_kvp_output
 
 METRICS_HEADER = (
     "doc_id,num_gt_keys,matched_keys,key_recall,"
@@ -152,3 +157,103 @@ def compute_macro_summary(
         "exact_match_rate": sum_em / n_docs,
         "value_f1": sum_value_f1 / n_docs,
     }
+
+def evaluate_batch(
+    *,
+    batch_ids,
+    batch_texts,
+    batch_gt_kvp,
+    build_prompt,
+    tokenizer,
+    model,
+    is_encoder_decoder,
+    device,
+    system_message,
+):
+    """Evaluate one document batch using the benchmark pipeline."""
+
+    batch_prompts = [
+        build_prompt(text)
+        for text in batch_texts
+    ]
+
+    batch_prompt_stats = [
+        prompt_token_stats(
+            tokenizer,
+            prompt,
+            is_encoder_decoder,
+            system_message,
+        )
+        for prompt in batch_prompts
+    ]
+
+    generation_results = run_model_on_prompts(
+        tokenizer,
+        model,
+        batch_prompts,
+        is_encoder_decoder,
+        device,
+        system_message,
+    )
+
+    results = []
+
+    for (
+        doc_id,
+        doc_text,
+        gt_kvp,
+        gen_result,
+        prompt_stats,
+    ) in zip(
+        batch_ids,
+        batch_texts,
+        batch_gt_kvp,
+        generation_results,
+        batch_prompt_stats,
+    ):
+        (
+            prompt_tokens_no_trunc,
+            prompt_tokens_trunc,
+            prompt_truncated,
+        ) = prompt_stats
+
+        raw_output = gen_result["text"]
+
+        pred_kvp = parse_kvp_output(
+            raw_output
+        )
+
+        metrics = compute_doc_metrics(
+            gt_kvp,
+            pred_kvp,
+        )
+
+        results.append(
+            {
+                "doc_id": doc_id,
+                "doc_text": doc_text,
+                "gt_kvp": gt_kvp,
+                "pred_kvp": pred_kvp,
+                "raw_output": raw_output,
+                "metrics": metrics,
+                "prompt_tokens_no_trunc": (
+                    prompt_tokens_no_trunc
+                ),
+                "prompt_tokens_trunc": (
+                    prompt_tokens_trunc
+                ),
+                "prompt_truncated": bool(
+                    prompt_truncated
+                ),
+                "generated_tokens": int(
+                    gen_result["generated_tokens"]
+                ),
+                "output_hit_max_new_tokens": bool(
+                    gen_result[
+                        "output_hit_max_new_tokens"
+                    ]
+                ),
+            }
+        )
+
+    return results
