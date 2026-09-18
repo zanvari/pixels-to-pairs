@@ -11,6 +11,7 @@ from pixels_to_pairs.inference.generation import (
     maybe_apply_chat_template,
     postprocess_decoded_text,
     preferred_dtype,
+    prompt_token_stats,
     qwen_im_end_eos_id,
 )
 
@@ -198,4 +199,129 @@ def test_postprocess_decoded_text_removes_embedded_markers():
             '  abc<|im_end|>def<|im_end|>  '
         )
         == "abcdef"
+    )
+
+class FakeTokenBatch:
+    def __init__(self, length):
+        self.shape = (1, length)
+
+
+class FakePromptTokenizer:
+    def __init__(
+        self,
+        raw_length,
+        templated_length,
+        model_max_length=32768,
+    ):
+        self.raw_length = raw_length
+        self.templated_length = templated_length
+        self.model_max_length = model_max_length
+        self.chat_template = "template"
+
+    def apply_chat_template(
+        self,
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+    ):
+        return "CHAT_TEMPLATE_APPLIED"
+
+    def __call__(
+        self,
+        text,
+        return_tensors,
+        truncation,
+        max_length=None,
+    ):
+        if text == "CHAT_TEMPLATE_APPLIED":
+            length = self.templated_length
+        else:
+            length = self.raw_length
+
+        if truncation and max_length is not None:
+            length = min(length, max_length)
+
+        return {
+            "input_ids": FakeTokenBatch(length),
+        }
+
+
+def test_prompt_token_stats_uses_chat_template_for_causal_model():
+    tokenizer = FakePromptTokenizer(
+        raw_length=100,
+        templated_length=120,
+    )
+
+    result = prompt_token_stats(
+        tokenizer,
+        "raw prompt",
+        is_encoder_decoder=False,
+        system_message="system",
+    )
+
+    assert result == (
+        120,
+        120,
+        False,
+    )
+
+
+def test_prompt_token_stats_uses_raw_prompt_for_encoder_decoder():
+    tokenizer = FakePromptTokenizer(
+        raw_length=100,
+        templated_length=120,
+    )
+
+    result = prompt_token_stats(
+        tokenizer,
+        "raw prompt",
+        is_encoder_decoder=True,
+        system_message="system",
+    )
+
+    assert result == (
+        100,
+        100,
+        False,
+    )
+
+
+def test_prompt_token_stats_reports_truncation():
+    tokenizer = FakePromptTokenizer(
+        raw_length=100,
+        templated_length=9000,
+    )
+
+    result = prompt_token_stats(
+        tokenizer,
+        "raw prompt",
+        is_encoder_decoder=False,
+        system_message="system",
+    )
+
+    assert result == (
+        9000,
+        8192,
+        True,
+    )
+
+
+def test_prompt_token_stats_respects_smaller_model_limit():
+    tokenizer = FakePromptTokenizer(
+        raw_length=100,
+        templated_length=5000,
+        model_max_length=4096,
+    )
+
+    result = prompt_token_stats(
+        tokenizer,
+        "raw prompt",
+        is_encoder_decoder=False,
+        system_message="system",
+    )
+
+    assert result == (
+        5000,
+        4096,
+        True,
     )

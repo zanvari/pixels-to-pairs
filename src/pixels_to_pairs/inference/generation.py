@@ -354,3 +354,62 @@ def run_model_on_prompts(
         )
 
     return results
+
+def prompt_token_stats(
+    tokenizer,
+    prompt: str,
+    is_encoder_decoder: bool,
+    system_message: str,
+    max_input_tokens: int = DEFAULT_MAX_INPUT_TOKENS,
+):
+    """Measure prompt length using the representation used for generation.
+
+    Causal/chat models are measured after applying the tokenizer's chat
+    template. Encoder-decoder models are measured using the raw task prompt.
+
+    This function provides diagnostics only and does not alter generation.
+    """
+
+    max_in = effective_max_input_tokens(
+        tokenizer,
+        max_input_tokens,
+    )
+
+    prompt_for_model = (
+        prompt
+        if is_encoder_decoder
+        else maybe_apply_chat_template(
+            tokenizer,
+            prompt,
+            system_message,
+        )
+    )
+
+    tok_no_trunc = tokenizer(
+        prompt_for_model,
+        return_tensors="pt",
+        truncation=False,
+    )
+
+    tok_trunc = tokenizer(
+        prompt_for_model,
+        return_tensors="pt",
+        truncation=True,
+        max_length=max_in,
+    )
+
+    n_no_trunc = int(
+        tok_no_trunc["input_ids"].shape[-1]
+    )
+
+    n_trunc = int(
+        tok_trunc["input_ids"].shape[-1]
+    )
+
+    return (
+        n_no_trunc,
+        n_trunc,
+        n_no_trunc > n_trunc,
+    )
+
+
