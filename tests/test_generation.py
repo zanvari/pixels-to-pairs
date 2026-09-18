@@ -12,6 +12,7 @@ from pixels_to_pairs.inference.generation import (
     postprocess_decoded_text,
     preferred_dtype,
     prompt_token_stats,
+    cleanup_cuda,
     qwen_im_end_eos_id,
 )
 
@@ -325,3 +326,44 @@ def test_prompt_token_stats_respects_smaller_model_limit():
         4096,
         True,
     )
+def test_cleanup_cuda_without_cuda():
+    with (
+        patch("pixels_to_pairs.inference.generation.gc.collect") as collect,
+        patch(
+            "pixels_to_pairs.inference.generation.torch.cuda.is_available",
+            return_value=False,
+        ),
+        patch(
+            "pixels_to_pairs.inference.generation.torch.cuda.empty_cache"
+        ) as empty_cache,
+        patch(
+            "pixels_to_pairs.inference.generation.torch.cuda.ipc_collect"
+        ) as ipc_collect,
+    ):
+        cleanup_cuda()
+
+    collect.assert_called_once_with()
+    empty_cache.assert_not_called()
+    ipc_collect.assert_not_called()
+
+
+def test_cleanup_cuda_with_cuda():
+    with (
+        patch("pixels_to_pairs.inference.generation.gc.collect") as collect,
+        patch(
+            "pixels_to_pairs.inference.generation.torch.cuda.is_available",
+            return_value=True,
+        ),
+        patch(
+            "pixels_to_pairs.inference.generation.torch.cuda.empty_cache"
+        ) as empty_cache,
+        patch(
+            "pixels_to_pairs.inference.generation.torch.cuda.ipc_collect"
+        ) as ipc_collect,
+    ):
+        cleanup_cuda()
+
+    collect.assert_called_once_with()
+    empty_cache.assert_called_once_with()
+    ipc_collect.assert_called_once_with()
+

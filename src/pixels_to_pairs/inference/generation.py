@@ -1,5 +1,6 @@
 """Shared model loading and generation utilities."""
 
+import gc
 from typing import List, Optional
 
 import torch
@@ -413,3 +414,11 @@ def prompt_token_stats(
     )
 
 
+def cleanup_cuda():
+    """Collect Python garbage and release unused CUDA cache."""
+
+    gc.collect()
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
