@@ -1,24 +1,8 @@
-import importlib.util
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-
-SCRIPT_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "scripts"
-    / "run_benchmark.py"
-)
-
-SPEC = importlib.util.spec_from_file_location(
-    "run_benchmark_cli",
-    SCRIPT_PATH,
-)
-
-CLI = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(CLI)
-
+from pixels_to_pairs import cli as CLI
 
 def test_zero_shot_qwen_is_allowed():
     spec = CLI.resolve_model_spec(
