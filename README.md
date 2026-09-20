@@ -4,7 +4,6 @@ Official implementation and reproducibility code for:
 
 **From Pixels to Pairs: A Comprehensive Benchmark of LLM-Driven Key–Value Extraction in Noisy Document Settings**
 
-Zahra Anvari
 
 This repository provides the benchmark pipeline used to study how text quality,
 document structure, model choice, and in-context demonstrations affect
